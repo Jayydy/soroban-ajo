@@ -22,7 +22,9 @@ import { disputesRouter } from './routes/disputes'
 import rewardsRouter from './routes/rewards'
 import referralsRouter from './routes/referrals'
 import { chatRouter } from './routes/chat'
+import { notificationsRouter } from './routes/notifications'
 import { chatService } from './services/chatService'
+import { notificationService } from './services/notificationService'
 import { logger } from './utils/logger'
 
 dotenv.config()
@@ -32,6 +34,14 @@ const server = createServer(app)
 
 // Initialize Socket.IO with chat service
 chatService.init(server)
+
+// Attach notification namespace to the same Socket.IO server
+const chatIO = chatService.getIO()
+if (chatIO) {
+  notificationService.init(chatIO)
+} else {
+  logger.warn('chatService IO not available; notifications namespace not initialized')
+}
 
 // Middleware
 app.use(helmet())
@@ -68,6 +78,7 @@ app.use('/api/disputes', disputesRouter)
 app.use('/api/rewards', rewardsRouter)
 app.use('/api/referrals', referralsRouter)
 app.use('/api/chat', createUserLimiter(), chatRouter)
+app.use('/api/notifications', createUserLimiter(), notificationsRouter)
 
 // 404 handler
 app.use((req, res) => {
