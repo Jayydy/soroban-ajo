@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { HealthCheckService } from '../services/healthCheck';
 import { register } from '../services/metricsService';
 import { healthMonitor } from '../monitoring/healthMonitor';
-import { alertingService } from '../monitoring/alerting';
+import { alertingService, AlertSeverity } from '../monitoring/alerting';
 
 const router = Router();
 const healthCheck = new HealthCheckService();
@@ -41,11 +41,27 @@ router.get('/metrics', async (req, res) => {
   res.end(await register.metrics());
 });
 
-// Live monitor snapshot (latest poll result + alert history)
-router.get('/health/monitor', (req, res) => {
+// Live monitor snapshot with system metrics
+router.get('/health/monitor', (_req, res) => {
   const snapshot = healthMonitor.getLastSnapshot();
-  const alerts = alertingService.getHistory();
-  res.json({ snapshot, alerts });
+  const status = healthMonitor.getStatus();
+  res.json({ status, snapshot });
+});
+
+// Active alerts only
+router.get('/health/monitor/alerts/active', (_req, res) => {
+  res.json({ alerts: alertingService.getActiveAlerts() });
+});
+
+// Alert history with optional ?severity=&service= filters
+router.get('/health/monitor/alerts', (req, res) => {
+  const { severity, service, activeOnly } = req.query as Record<string, string>;
+  const filter: Parameters<typeof alertingService.getHistory>[0] = {};
+  if (severity) filter.severity = severity as AlertSeverity;
+  if (service) filter.service = service;
+  if (activeOnly === 'true') filter.activeOnly = true;
+  const alerts = alertingService.getHistory(filter);
+  res.json({ total: alerts.length, alerts });
 });
 
 export const healthRouter = router;

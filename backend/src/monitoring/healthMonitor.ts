@@ -1,11 +1,18 @@
 /**
  * healthMonitor.ts
- * Periodic health monitoring that polls service dependencies and updates
- * Prometheus gauges + triggers alerts when thresholds are breached.
+ * Periodic health monitoring: polls dependencies, tracks consecutive failures,
+ * fires severity-graded alerts (WARNING on slow response, CRITICAL on down),
+ * and updates Prometheus gauges.
  */
 import { HealthCheckService } from '../services/healthCheck';
 import { AlertingService, AlertSeverity } from './alerting';
-import { serviceHealthGauge, snapshotSystemMetrics } from './metricsCollector';
+import {
+  serviceHealthGauge,
+  serviceResponseTimeMs,
+  serviceConsecutiveFailures,
+  responseTimeThresholdBreached,
+  snapshotSystemMetrics,
+} from './metricsCollector';
 import { createModuleLogger } from '../utils/logger';
 
 const logger = createModuleLogger('HealthMonitor');
@@ -14,6 +21,7 @@ export interface ServiceCheckResult {
   name: string;
   status: 'up' | 'down';
   responseTime?: number;
+  consecutiveFailures: number;
   error?: string;
 }
 
@@ -22,6 +30,21 @@ export interface MonitorSnapshot {
   overall: 'healthy' | 'degraded' | 'unhealthy';
   services: ServiceCheckResult[];
   uptime: number;
+  memoryMb: number;
+}
+
+/** Response time (ms) above which a WARNING alert fires. Per-service overrides supported. */
+const DEFAULT_SLOW_THRESHOLD_MS = 1000;
+
+const SLOW_THRESHOLDS: Record<string, number> = {
+  database: 500,
+  redis: 100,
+  stellar: 2000,
+  email: 3000,
+};
+
+function slowThreshold(service: string): number {
+  return SLOW_THRESHOLDS[service] ?? DEFAULT_SLOW_THRESHOLD_MS;
 }
 
 export class HealthMonitor {
@@ -30,7 +53,9 @@ export class HealthMonitor {
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
   private lastSnapshot: MonitorSnapshot | null = null;
 
-  /** How often (ms) to run the health poll. Default: 30 s */
+  /** Tracks consecutive failures per service name. */
+  private readonly failureCounts = new Map<string, number>();
+
   private readonly pollIntervalMs: number;
 
   constructor(
@@ -45,9 +70,8 @@ export class HealthMonitor {
 
   /** Start the background polling loop. */
   start(): void {
-    if (this.intervalHandle) return; // already running
+    if (this.intervalHandle) return;
     logger.info('HealthMonitor started', { pollIntervalMs: this.pollIntervalMs });
-    // Run immediately, then on interval
     void this.runChecks();
     this.intervalHandle = setInterval(() => void this.runChecks(), this.pollIntervalMs);
   }
@@ -61,43 +85,72 @@ export class HealthMonitor {
     }
   }
 
-  /** Return the most recent snapshot (null if no check has run yet). */
   getLastSnapshot(): MonitorSnapshot | null {
     return this.lastSnapshot;
   }
 
-  /** Run all checks once and update metrics / alerts. */
+  /** Quick summary suitable for a status page. */
+  getStatus(): { overall: string; uptime: number } | null {
+    if (!this.lastSnapshot) return null;
+    return {
+      overall: this.lastSnapshot.overall,
+      uptime: this.lastSnapshot.uptime,
+    };
+  }
+
+  /** Run all checks once, update metrics, fire alerts, return snapshot. */
   async runChecks(): Promise<MonitorSnapshot> {
     try {
       const health = await this.healthCheck.getHealthStatus();
       await snapshotSystemMetrics();
 
-      const services: ServiceCheckResult[] = Object.entries(health.checks).map(
-        ([name, result]) => ({ name, ...result }),
+      const services: ServiceCheckResult[] = await Promise.all(
+        Object.entries(health.checks).map(async ([name, result]) => {
+          const prev = this.failureCounts.get(name) ?? 0;
+          const failures = result.status === 'down' ? prev + 1 : 0;
+          this.failureCounts.set(name, failures);
+
+          // Update Prometheus
+          serviceHealthGauge.set({ service: name }, result.status === 'up' ? 1 : 0);
+          serviceConsecutiveFailures.set({ service: name }, failures);
+          if (result.responseTime !== undefined) {
+            serviceResponseTimeMs.set({ service: name }, result.responseTime);
+          }
+
+          // CRITICAL alert: service is down
+          if (result.status === 'down') {
+            await this.alerting.fire({
+              severity: AlertSeverity.CRITICAL,
+              service: name,
+              message: `Dependency "${name}" is DOWN (${failures} consecutive failure${failures !== 1 ? 's' : ''})`,
+              details: result.error,
+            });
+          } else {
+            // Resolve any active critical alert when service recovers
+            this.alerting.resolve(name, AlertSeverity.CRITICAL);
+
+            // WARNING alert: slow response time
+            const threshold = slowThreshold(name);
+            if (result.responseTime !== undefined && result.responseTime > threshold) {
+              responseTimeThresholdBreached.inc({ service: name });
+              await this.alerting.fire({
+                severity: AlertSeverity.WARNING,
+                service: name,
+                message: `Dependency "${name}" is slow: ${result.responseTime}ms (threshold: ${threshold}ms)`,
+              });
+            }
+          }
+
+          return { name, ...result, consecutiveFailures: failures };
+        }),
       );
-
-      // Update Prometheus gauges
-      for (const svc of services) {
-        serviceHealthGauge.set({ service: svc.name }, svc.status === 'up' ? 1 : 0);
-      }
-
-      // Fire alerts for any downed service
-      for (const svc of services) {
-        if (svc.status === 'down') {
-          await this.alerting.fire({
-            severity: AlertSeverity.CRITICAL,
-            service: svc.name,
-            message: `Service "${svc.name}" is DOWN`,
-            details: svc.error,
-          });
-        }
-      }
 
       const snapshot: MonitorSnapshot = {
         timestamp: health.timestamp,
         overall: health.status,
         services,
         uptime: health.uptime,
+        memoryMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
       };
 
       this.lastSnapshot = snapshot;
@@ -110,5 +163,4 @@ export class HealthMonitor {
   }
 }
 
-// Singleton instance used by the app
 export const healthMonitor = new HealthMonitor();

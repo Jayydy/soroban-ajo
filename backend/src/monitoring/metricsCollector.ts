@@ -22,6 +22,30 @@ export const serviceHealthGauge = new client.Gauge({
   registers: [register],
 });
 
+// ── Response time gauge per dependency ───────────────────────────────────────
+export const serviceResponseTimeMs = new client.Gauge({
+  name: 'service_dependency_response_time_ms',
+  help: 'Last measured response time (ms) for a service dependency',
+  labelNames: ['service'],
+  registers: [register],
+});
+
+// ── Threshold breach counter ──────────────────────────────────────────────────
+export const responseTimeThresholdBreached = new client.Counter({
+  name: 'service_response_time_threshold_breached_total',
+  help: 'Number of times a dependency exceeded its response-time threshold',
+  labelNames: ['service'],
+  registers: [register],
+});
+
+// ── Consecutive failure gauge ─────────────────────────────────────────────────
+export const serviceConsecutiveFailures = new client.Gauge({
+  name: 'service_consecutive_failures',
+  help: 'Number of consecutive health-check failures for a dependency',
+  labelNames: ['service'],
+  registers: [register],
+});
+
 // ── Alert counter ─────────────────────────────────────────────────────────────
 export const alertsFiredTotal = new client.Counter({
   name: 'alerts_fired_total',
@@ -51,7 +75,7 @@ export const processCpuUsagePercent = new client.Gauge({
   registers: [register],
 });
 
-// ── Snapshot helpers ──────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Record a service operation result and its duration. */
 export function recordOperation(
@@ -60,10 +84,7 @@ export function recordOperation(
   status: 'success' | 'failure',
   durationMs: number,
 ): void {
-  serviceOperationDuration.observe(
-    { service, operation, status },
-    durationMs / 1000,
-  );
+  serviceOperationDuration.observe({ service, operation, status }, durationMs / 1000);
   if (status === 'failure') {
     serviceErrorTotal.inc({ service, operation, error_type: 'operation_failure' });
   }
@@ -92,10 +113,9 @@ export async function snapshotSystemMetrics(): Promise<void> {
   const mem = process.memoryUsage();
   processMemoryBytes.set(mem.heapUsed);
 
-  // CPU delta over 100 ms
   const cpuBefore = process.cpuUsage();
   await new Promise<void>((r) => setTimeout(r, 100));
   const cpuAfter = process.cpuUsage(cpuBefore);
-  const totalMicros = (cpuAfter.user + cpuAfter.system);
+  const totalMicros = cpuAfter.user + cpuAfter.system;
   processCpuUsagePercent.set((totalMicros / 1_000_000 / 0.1) * 100);
 }
