@@ -91,11 +91,12 @@ model Group {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  members        GroupMember[]
-  contributions  Contribution[]
-  metrics        GroupMetrics?
-  multiSigConfig MultiSigConfig?
-  chatRoom       ChatRoom?
+  members              GroupMember[]
+  contributions        Contribution[]
+  metrics              GroupMetrics?
+  multiSigConfig       MultiSigConfig?
+  chatRoom             ChatRoom?
+  contributionSchedule ContributionSchedule?
 
   @@index([isActive, createdAt(sort: Desc)])
   @@index([name])
@@ -663,4 +664,55 @@ model EventStore {
   @@index([aggregateId])
   @@index([type])
   @@index([sequenceNumber])
+}
+
+// ─── Contribution Schedule ────────────────────────────────────────────────────
+
+/// Frequency type for a group's contribution schedule.
+/// CUSTOM means the admin supplies an explicit intervalDays value.
+model ContributionSchedule {
+  id              String    @id @default(cuid())
+  groupId         String    @unique
+  /// WEEKLY | BI_WEEKLY | MONTHLY | CUSTOM
+  frequency       String
+  /// Only required when frequency = CUSTOM
+  intervalDays    Int?
+  /// Hours after the due date before a member is considered late
+  gracePeriodHours Int      @default(24)
+  /// How many hours the payment window stays open (0 = no hard close)
+  paymentWindowHours Int    @default(72)
+  /// Anchor date — the first contribution was/is due on this date
+  startDate       DateTime
+  /// Next computed due date (denormalised for fast queries)
+  nextDueDate     DateTime
+  /// Whether the schedule is currently active
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  group           Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  windows         PaymentWindow[]
+
+  @@index([nextDueDate])
+  @@index([isActive, nextDueDate])
+}
+
+/// Tracks each individual payment window opened for a schedule cycle.
+model PaymentWindow {
+  id           String    @id @default(cuid())
+  scheduleId   String
+  cycleNumber  Int
+  opensAt      DateTime
+  dueAt        DateTime
+  closesAt     DateTime?
+  status       String    @default("OPEN") // OPEN | CLOSED | GRACE | MISSED
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  schedule     ContributionSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, cycleNumber])
+  @@index([scheduleId, status])
+  @@index([dueAt])
+  @@index([closesAt])
 }
