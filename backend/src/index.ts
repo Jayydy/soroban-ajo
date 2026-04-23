@@ -58,6 +58,18 @@ app.use('/api/disputes', disputesRouter)
 import { backupRouter } from './routes/backup'
 app.use('/api/backups', backupRouter)
 
+// Audit
+import { auditRouter } from './routes/audit'
+app.use('/api/audit', auditRouter)
+
+// i18n
+import { i18nRouter } from './routes/i18n'
+app.use('/api/i18n', i18nRouter)
+
+// Cache
+import { cacheRouter } from './routes/cache'
+app.use('/api/cache', cacheRouter)
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({

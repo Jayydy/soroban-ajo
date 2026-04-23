@@ -649,6 +649,24 @@ model ChatParticipant {
   @@index([userId])
 }
 
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String   // wallet address or system identifier
+  actorType  String   @default("USER") // USER, ADMIN, SYSTEM
+  action     String   // e.g. GROUP_CREATED, MEMBER_REMOVED, PAYOUT_TRIGGERED
+  targetType String?  // e.g. Group, User, Contribution
+  targetId   String?
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([targetType, targetId])
+  @@index([createdAt(sort: Desc)])
+}
+
 model BackupRecord {
   id            String    @id @default(cuid())
   backupType    String    // FULL, WAL
