@@ -11,6 +11,7 @@ import {
   groupIdParamSchema,
   paginationQuerySchema,
 } from '../validators/groups'
+import { scheduleRouter } from './schedule'
 
 const router = Router()
 const controller = new GroupsController()
@@ -235,5 +236,8 @@ router.get(
   validateRequest({ params: groupIdParamSchema, query: paginationQuerySchema }),
   controller.getTransactions.bind(controller)
 )
+
+// Contribution schedule sub-router
+router.use('/:id/schedule', scheduleRouter)
 
 export const groupsRouter = router

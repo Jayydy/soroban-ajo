@@ -2,12 +2,20 @@
 
 import { AuthProvider } from '@/context/AuthContext'
 import { ThemeProvider } from '@/context/ThemeContext'
+import { OfflineProvider } from '@/context/OfflineContext'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { Toaster } from 'react-hot-toast'
-import { observeWebVitals, observeResourceTiming, measurePageLoad } from '@/utils/monitoring'
-import { initGoogleAnalytics, trackWebVital } from '@/utils/googleAnalytics'
-import { initSentryClient } from '@/config/sentry'
+import { useOnboarding } from '@/hooks/useOnboarding'
+import { NotificationProvider } from '@/components/NotificationProvider'
+
+function OnboardingInitializer() {
+  const startOnboardingIfNew = useOnboarding((s) => s.startOnboardingIfNew)
+  useEffect(() => {
+    startOnboardingIfNew()
+  }, [startOnboardingIfNew])
+  return null
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -45,8 +53,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          {children}
-          <Toaster position="top-right" />
+          <NotificationProvider>
+            <OnboardingInitializer />
+            {children}
+            <Toaster position="top-right" />
+          </NotificationProvider>
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>

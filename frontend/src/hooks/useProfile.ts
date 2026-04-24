@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 
+/**
+ * Represents a user's full profile including metadata and stats.
+ */
 export interface UserProfile {
   address: string
   displayName?: string
@@ -7,6 +10,10 @@ export interface UserProfile {
   avatar?: string
   email?: string
   joinedDate: string
+  /** User's current KYC validation level */
+  kycLevel?: number
+  /** Human-readable KYC status (e.g., 'verified', 'pending') */
+  kycStatus?: string
   preferences: UserPreferences
   stats: UserStats
 }
@@ -17,6 +24,21 @@ export interface UserPreferences {
   theme: 'light' | 'dark' | 'auto'
   language: string
   currency: string
+  emailNotifications?: {
+    enabled: boolean
+    frequency: 'instant' | 'daily' | 'weekly'
+    events: {
+      contributionDue24h: boolean
+      contributionDue1h: boolean
+      contributionOverdue: boolean
+      payoutReceived: boolean
+      memberJoined: boolean
+      cycleCompleted: boolean
+      announcements: boolean
+      groupInvitation: boolean
+      securityAlerts: boolean
+    }
+  }
 }
 
 export interface UserStats {
@@ -121,6 +143,13 @@ class ProfileStorageService {
 
 const storageService = new ProfileStorageService()
 
+/**
+ * Hook for managing and retrieving user profile data and activity history.
+ * Data is persisted in localStorage indexed by the user's wallet address.
+ * 
+ * @param address - Optional wallet address to load profile for
+ * @returns Profile state, activities, and update actions
+ */
 export const useProfile = (address?: string) => {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [activities, setActivities] = useState<Activity[]>([])
@@ -155,6 +184,9 @@ export const useProfile = (address?: string) => {
             totalContributions: 0,
             totalReceived: 0,
           },
+          // default kyc values
+          kycLevel: 0,
+          kycStatus: 'none',
         }
         storageService.saveProfile(userProfile)
       }
@@ -171,7 +203,11 @@ export const useProfile = (address?: string) => {
     }
   }, [])
 
-  // Update profile
+  /**
+   * Update the user's profile metadata.
+   * 
+   * @param updates - Partial profile fields to change
+   */
   const updateProfile = useCallback(
     async (updates: Partial<UserProfile>): Promise<void> => {
       if (!profile) {
@@ -240,7 +276,12 @@ export const useProfile = (address?: string) => {
     [profile]
   )
 
-  // Upload profile image
+  /**
+   * Upload a profile image (simulated IPFS) and update the avatar URL.
+   * 
+   * @param file - Image file to upload
+   * @returns The resulting public URL
+   */
   const uploadProfileImage = useCallback(
     async (file: File): Promise<string> => {
       if (!profile) {
@@ -332,11 +373,5 @@ export const useProfile = (address?: string) => {
     addActivity,
     updateStats,
     refreshProfile: () => address && loadProfile(address),
-    isLoading,
-    error,
-    updateProfile,
-    savePreferences,
-    refreshProfile: fetchProfile,
-    refreshActivities: fetchActivities,
   }
 }
