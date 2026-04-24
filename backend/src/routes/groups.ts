@@ -3,6 +3,7 @@ import { GroupsController } from '../controllers/groupsController'
 import { webhookMiddleware } from '../middleware/webhook'
 import { authMiddleware } from '../middleware/auth'
 import { validateRequest } from '../middleware/validateRequest'
+import { groupsWriteLimiter } from '../middleware/rateLimiter'
 import {
   createGroupSchema,
   joinGroupSchema,
@@ -107,6 +108,7 @@ router.get(
 router.post(
   '/',
   authMiddleware,
+  groupsWriteLimiter,
   validateRequest({ body: createGroupSchema }),
   controller.createGroup.bind(controller),
   webhookMiddleware.afterGroupCreated
@@ -138,6 +140,7 @@ router.post(
 router.post(
   '/:id/join',
   authMiddleware,
+  groupsWriteLimiter,
   validateRequest({ params: groupIdParamSchema, body: joinGroupSchema }),
   controller.joinGroup.bind(controller),
   webhookMiddleware.afterMemberJoined
@@ -167,6 +170,7 @@ router.post(
 router.post(
   '/:id/contribute',
   authMiddleware,
+  groupsWriteLimiter,
   validateRequest({ params: groupIdParamSchema, body: contributeSchema }),
   controller.contribute.bind(controller),
   webhookMiddleware.afterContribution
