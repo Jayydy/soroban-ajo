@@ -16,7 +16,15 @@ import { analyticsRouter } from './routes/analytics'
 import { emailRouter } from './routes/email'
 import { jobsRouter } from './routes/jobs'
 import { setupSwagger } from './swagger'
-import { apiLimiter, strictLimiter } from './middleware/rateLimiter'
+import {
+  apiLimiter,
+  strictLimiter,
+  groupsWriteLimiter,
+  analyticsLimiter,
+  publicReadLimiter,
+} from './middleware/rateLimiter'
+import { ddosProtection, ipBlocklist } from './middleware/ddosProtection'
+import { requestThrottle } from './middleware/requestThrottle'
 import { performanceMiddleware } from './middleware/performance'
 import { metricsRouter } from './routes/metrics'
 import { startWorkers, stopWorkers } from './jobs/jobWorkers'
@@ -37,12 +45,20 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true
 }))
+app.set('trust proxy', 1)
+
+// DDoS & IP protection — run before everything else
+app.use(ipBlocklist)
+app.use(ddosProtection)
+app.use(requestThrottle)
+
 app.use(requestLogger)
 app.use(performanceMiddleware)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
+
+// Global API rate limit
 app.use('/api', apiLimiter)
-app.set('trust proxy', 1)
 
 // API Documentation
 setupSwagger(app)
@@ -50,11 +66,11 @@ setupSwagger(app)
 // Routes
 app.use('/health', healthRouter)
 app.use('/api/auth', strictLimiter, authRouter)
-app.use('/api/groups', groupsRouter)
+app.use('/api/groups', publicReadLimiter, groupsRouter)
 app.use('/api/webhooks', strictLimiter, webhooksRouter)
-app.use('/api/analytics', analyticsRouter)
+app.use('/api/analytics', analyticsLimiter, analyticsRouter)
 app.use('/api/email', emailRouter)
-app.use('/api/jobs', jobsRouter)
+app.use('/api/jobs', strictLimiter, jobsRouter)
 app.use('/api/metrics', metricsRouter)
 
 // 404 handler
