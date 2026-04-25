@@ -16,7 +16,6 @@ import { usePathname } from 'next/navigation'
 import { FloatingSidebar } from './FloatingSidebar'
 import { MobileNav } from './MobileNav'
 import { NotificationHistory } from './NotificationHistory'
-import Onboarding from './Onboarding'
 import { ProductTour } from './tour/ProductTour'
 import { ThemeToggle } from './ThemeToggle'
 import { useOnboarding } from '@/hooks/useOnboarding'
@@ -160,8 +159,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         </main>
       </div>
 
-      {/* Onboarding & Tour */}
-      <Onboarding />
+      {/* Product Tour */}
       <ProductTour
         initialSteps={[
           {
