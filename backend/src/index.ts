@@ -115,9 +115,9 @@ app.use('/api/payments', paymentsRouter)
 import { paymentWebhooksRouter } from './routes/paymentWebhooks'
 app.use('/api/webhooks/payments', paymentWebhooksRouter)
 
-// Calendar integration — Issue #619
-import { calendarRouter } from './routes/calendar'
-app.use('/api/calendar', calendarRouter)
+// E2E Encryption key exchange — Issue #611
+import { e2eRouter } from './routes/e2e'
+app.use('/api/e2e', strictLimiter, e2eRouter)
 
 // 404 handler
 app.use((req, res) => {
