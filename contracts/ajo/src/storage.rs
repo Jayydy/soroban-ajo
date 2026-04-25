@@ -68,6 +68,18 @@ pub enum StorageKey {
     /// Aggregated member statistics.
     /// Stored in persistent storage under `("MSTATS", member)`.
     MemberStatsData(Address),
+
+    /// Aggregated reputation record for a member.
+    /// Stored in persistent storage under `("MREP", member)`.
+    MemberReputation(Address),
+
+    /// Ordered list of credit score snapshots for a member.
+    /// Stored in persistent storage under `("MREPSNAP", member)`.
+    MemberReputationSnapshots(Address),
+
+    /// Ordered list of payment history entries for a member.
+    /// Stored in persistent storage under `("MPAYHIST", member)`.
+    MemberPaymentHistory(Address),
 }
 
 impl StorageKey {
@@ -99,11 +111,16 @@ impl StorageKey {
             StorageKey::GroupMilestones(_) => symbol_short!("GMILE"),
             StorageKey::MemberAchievements(_) => symbol_short!("MACHIEV"),
             StorageKey::MemberStatsData(_) => symbol_short!("MSTATS"),
+            StorageKey::MemberReputation(_) => symbol_short!("MREP"),
+            StorageKey::MemberReputationSnapshots(_) => symbol_short!("MREPSNAP"),
+            StorageKey::MemberPaymentHistory(_) => symbol_short!("MPAYHIST"),
         }
     }
 }
 
+
 /// Returns the next available group ID and atomically increments the counter.
+
 ///
 /// The counter starts at 0 and is stored in instance storage. Each call
 /// increments it by 1 and returns the new value, so the first group
@@ -857,4 +874,124 @@ pub fn get_group_token_balance(
 ) -> i128 {
     let key = (symbol_short!("GTBAL"), group_id, cycle, token);
     env.storage().persistent().get(&key).unwrap_or(0)
+}
+
+// ── Dispute storage ───────────────────────────────────────────────────────
+
+/// Returns the next dispute ID and increments the counter.
+pub fn get_next_dispute_id(env: &Env) -> u64 {
+    let key = symbol_short!("DCOUNTER");
+    let id: u64 = env.storage().instance().get(&key).unwrap_or(0);
+    env.storage().instance().set(&key, &(id + 1));
+    id
+}
+
+/// Stores a dispute.
+pub fn store_dispute(env: &Env, id: u64, dispute: &crate::types::Dispute) {
+    let key = (symbol_short!("DISPUTE"), id);
+    env.storage().persistent().set(&key, dispute);
+}
+
+/// Retrieves a dispute by ID.
+pub fn get_dispute(env: &Env, id: u64) -> Option<crate::types::Dispute> {
+    let key = (symbol_short!("DISPUTE"), id);
+    env.storage().persistent().get(&key)
+}
+
+/// Records that a voter has voted on a dispute.
+pub fn store_dispute_vote(env: &Env, dispute_id: u64, voter: &Address, vote: &crate::types::DisputeVote) {
+    let key = (symbol_short!("DISPVOTE"), dispute_id, voter);
+    env.storage().persistent().set(&key, vote);
+}
+
+/// Returns `true` if the voter has already voted on this dispute.
+pub fn has_voted_on_dispute(env: &Env, dispute_id: u64, voter: &Address) -> bool {
+    let key = (symbol_short!("DISPVOTE"), dispute_id, voter);
+    env.storage().persistent().has(&key)
+}
+
+/// Stores the list of dispute IDs for a group.
+pub fn store_group_dispute_ids(env: &Env, group_id: u64, ids: &Vec<u64>) {
+    let key = (symbol_short!("DISPGIDS"), group_id);
+    env.storage().persistent().set(&key, ids);
+}
+
+/// Retrieves the list of dispute IDs for a group.
+pub fn get_group_dispute_ids(env: &Env, group_id: u64) -> Vec<u64> {
+    let key = (symbol_short!("DISPGIDS"), group_id);
+    env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env))
+}
+
+// ── Reputation storage ────────────────────────────────────────────────────
+
+/// Stores the aggregated reputation record for a member.
+pub fn store_reputation(env: &Env, member: &Address, rep: &crate::types::ReputationScore) {
+    let key = (symbol_short!("MREP"), member);
+    env.storage().persistent().set(&key, rep);
+}
+
+/// Retrieves the aggregated reputation record for a member.
+pub fn get_reputation(env: &Env, member: &Address) -> Option<crate::types::ReputationScore> {
+    let key = (symbol_short!("MREP"), member);
+    env.storage().persistent().get(&key)
+}
+
+/// Appends a credit score snapshot to the member's history.
+///
+/// Enforces a rolling cap of [`MAX_SCORE_HISTORY`](crate::types::MAX_SCORE_HISTORY)
+/// entries by dropping the oldest entry when the cap is reached.
+pub fn append_credit_snapshot(
+    env: &Env,
+    member: &Address,
+    snapshot: &crate::types::CreditScoreSnapshot,
+) {
+    let key = (symbol_short!("MREPSNAP"), member);
+    let mut history: Vec<crate::types::CreditScoreSnapshot> =
+        env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env));
+
+    // Enforce rolling cap
+    while history.len() >= crate::types::MAX_SCORE_HISTORY {
+        history.remove(0);
+    }
+    history.push_back(snapshot.clone());
+    env.storage().persistent().set(&key, &history);
+}
+
+/// Retrieves the credit score snapshot history for a member.
+pub fn get_credit_snapshots(
+    env: &Env,
+    member: &Address,
+) -> Option<Vec<crate::types::CreditScoreSnapshot>> {
+    let key = (symbol_short!("MREPSNAP"), member);
+    env.storage().persistent().get(&key)
+}
+
+/// Appends a payment history entry for a member.
+///
+/// Enforces a rolling cap of [`MAX_PAYMENT_HISTORY`](crate::types::MAX_PAYMENT_HISTORY)
+/// entries by dropping the oldest entry when the cap is reached.
+pub fn append_payment_history(
+    env: &Env,
+    member: &Address,
+    entry: &crate::types::PaymentHistoryEntry,
+) {
+    let key = (symbol_short!("MPAYHIST"), member);
+    let mut history: Vec<crate::types::PaymentHistoryEntry> =
+        env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env));
+
+    // Enforce rolling cap
+    while history.len() >= crate::types::MAX_PAYMENT_HISTORY {
+        history.remove(0);
+    }
+    history.push_back(entry.clone());
+    env.storage().persistent().set(&key, &history);
+}
+
+/// Retrieves the payment history for a member.
+pub fn get_payment_history(
+    env: &Env,
+    member: &Address,
+) -> Option<Vec<crate::types::PaymentHistoryEntry>> {
+    let key = (symbol_short!("MPAYHIST"), member);
+    env.storage().persistent().get(&key)
 }

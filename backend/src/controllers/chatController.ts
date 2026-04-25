@@ -1,4 +1,4 @@
-import { Request, Response } from 'express'
+import { Response } from 'express'
 import { prisma } from '../config/database'
 import { chatService } from '../services/chatService'
 import { logger } from '../utils/logger'
@@ -227,7 +227,7 @@ export class ChatController {
         })
       }
 
-      const updatedMessage = await chatService.editMessage(messageId, req.user!.walletAddress, content)
+      const updatedMessage = await chatService.editMessage(messageId, req.user!.walletAddress!, content)
 
       res.json({
         success: true,
@@ -280,7 +280,7 @@ export class ChatController {
         }
       }
 
-      await chatService.deleteMessage(messageId, req.user!.walletAddress)
+      await chatService.deleteMessage(messageId, req.user!.walletAddress!)
 
       res.json({
         success: true,
@@ -334,7 +334,7 @@ export class ChatController {
     try {
       const { roomId } = req.params
 
-      await chatService.markAsRead(roomId, req.user!.walletAddress)
+      await chatService.markAsRead(roomId, req.user!.walletAddress!)
 
       res.json({
         success: true,

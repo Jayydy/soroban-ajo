@@ -1,7 +1,7 @@
 import { prisma } from '../../config/database';
 import { logger } from '../../utils/logger';
 import { RateLimitExceededError } from '../../errors/GamificationError';
-import { challengeService } from './ChallengeService';
+// import { challengeService } from './ChallengeService'; // Temporarily disabled
 
 export class SocialService {
   private followRateLimits: Map<string, { count: number; resetAt: number }> = new Map();
@@ -42,7 +42,8 @@ export class SocialService {
     this.incrementRateLimit(followerId);
 
     // Update challenge progress
-    await challengeService.updateChallengeProgress(followerId, 'FOLLOW');
+    // await challengeService.updateChallengeProgress(followerId, 'FOLLOW');
+    // Temporarily disabled
 
     logger.info('User followed', { followerId, followingId });
   }
@@ -97,7 +98,7 @@ export class SocialService {
       },
     });
 
-    return followers.map((f) => ({
+    return followers.map((f: any) => ({
       id: f.id,
       walletAddress: f.follower.walletAddress,
       points: f.follower.gamification?.points || 0,
@@ -141,7 +142,7 @@ export class SocialService {
       },
     });
 
-    return following.map((f) => ({
+    return following.map((f: any) => ({
       id: f.id,
       walletAddress: f.following.walletAddress,
       points: f.following.gamification?.points || 0,

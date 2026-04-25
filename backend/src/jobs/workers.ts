@@ -3,10 +3,15 @@ import { EMAIL_QUEUE_NAME } from '../queues/emailQueue'
 import { PAYOUT_QUEUE_NAME } from '../queues/payoutQueue'
 import { SYNC_QUEUE_NAME } from '../queues/syncQueue'
 import { NOTIFICATION_QUEUE_NAME } from '../queues/notificationQueue'
+import { SCHEDULE_QUEUE_NAME } from '../queues/scheduleQueue'
 import { processEmailJob } from './emailJob'
 import { processPayoutJob } from './payoutJob'
+import { processReminderJob } from './reminderJob'
+import { processScheduleJob } from './scheduleJob'
 import { logger } from '../utils/logger'
 import { Job } from 'bullmq'
+
+export const REMINDER_QUEUE_NAME = 'reminders'
 
 // Sync job data type
 interface SyncJobData {
@@ -83,6 +88,8 @@ const WORKER_CONCURRENCY = {
   payout: 5,
   sync: 3,
   notification: 15,
+  reminder: 2,
+  schedule: 1,
 }
 
 /**
@@ -90,7 +97,7 @@ const WORKER_CONCURRENCY = {
  */
 export function initializeWorkers() {
   logger.info('Initializing job workers...')
-  
+
   // Email worker
   const emailWorker = createWorker(
     EMAIL_QUEUE_NAME,
@@ -98,7 +105,7 @@ export function initializeWorkers() {
     WORKER_CONCURRENCY.email
   )
   logger.info(`Email worker initialized with concurrency ${WORKER_CONCURRENCY.email}`)
-  
+
   // Payout worker
   const payoutWorker = createWorker(
     PAYOUT_QUEUE_NAME,
@@ -106,7 +113,7 @@ export function initializeWorkers() {
     WORKER_CONCURRENCY.payout
   )
   logger.info(`Payout worker initialized with concurrency ${WORKER_CONCURRENCY.payout}`)
-  
+
   // Sync worker
   const syncWorker = createWorker(
     SYNC_QUEUE_NAME,
@@ -114,7 +121,7 @@ export function initializeWorkers() {
     WORKER_CONCURRENCY.sync
   )
   logger.info(`Sync worker initialized with concurrency ${WORKER_CONCURRENCY.sync}`)
-  
+
   // Notification worker
   const notificationWorker = createWorker(
     NOTIFICATION_QUEUE_NAME,
@@ -122,13 +129,31 @@ export function initializeWorkers() {
     WORKER_CONCURRENCY.notification
   )
   logger.info(`Notification worker initialized with concurrency ${WORKER_CONCURRENCY.notification}`)
-  
+
+  // Reminder worker (weekly/monthly reports + daily contribution reminders)
+  const reminderWorker = createWorker(
+    REMINDER_QUEUE_NAME,
+    processReminderJob,
+    WORKER_CONCURRENCY.reminder
+  )
+  logger.info(`Reminder worker initialized with concurrency ${WORKER_CONCURRENCY.reminder}`)
+
+  // Schedule worker (grace period enforcement + due-date reminders)
+  const scheduleWorker = createWorker(
+    SCHEDULE_QUEUE_NAME,
+    processScheduleJob,
+    WORKER_CONCURRENCY.schedule
+  )
+  logger.info(`Schedule worker initialized with concurrency ${WORKER_CONCURRENCY.schedule}`)
+
   logger.info('All workers initialized successfully')
-  
+
   return {
     emailWorker,
     payoutWorker,
     syncWorker,
     notificationWorker,
+    reminderWorker,
+    scheduleWorker,
   }
 }

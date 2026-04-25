@@ -1,5 +1,12 @@
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
 
+/**
+ * Converts a URL-safe base64 string to a Uint8Array.
+ * Used for VAPID public key conversion.
+ * 
+ * @param base64String - The base64 string to convert
+ * @returns Uint8Array representation
+ */
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -11,6 +18,11 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
+/**
+ * Register the Service Worker for push notification support.
+ * 
+ * @returns ServiceWorkerRegistration or null if not supported/failed
+ */
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!('serviceWorker' in navigator)) {
     return null;
@@ -24,6 +36,11 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   }
 }
 
+/**
+ * Request permission from the user to show browser notifications.
+ * 
+ * @returns The resulting notification permission status
+ */
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
   if (!('Notification' in window)) {
     return 'denied';
@@ -41,6 +58,12 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   return Notification.permission;
 }
 
+/**
+ * Subscribe the current user to push notifications via the service worker.
+ * Registers the subscription with the backend API.
+ *
+ * @returns The PushSubscription object or null if failed
+ */
 export async function subscribeToPushNotifications(): Promise<PushSubscription | null> {
   const registration = await registerServiceWorker();
   if (!registration) return null;
@@ -53,8 +76,17 @@ export async function subscribeToPushNotifications(): Promise<PushSubscription |
   try {
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: VAPID_PUBLIC_KEY ? urlBase64ToUint8Array(VAPID_PUBLIC_KEY) : undefined,
+      applicationServerKey: VAPID_PUBLIC_KEY ? (urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as any) : undefined,
     });
+
+    // Register with backend
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    await fetch(`${apiUrl}/api/notifications/push/subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(subscription.toJSON()),
+    }).catch(() => {/* non-fatal */});
 
     return subscription;
   } catch (error) {
@@ -62,6 +94,11 @@ export async function subscribeToPushNotifications(): Promise<PushSubscription |
   }
 }
 
+/**
+ * Unsubscribe the current user from push notifications.
+ * 
+ * @returns True if successfully unsubscribed, false otherwise
+ */
 export async function unsubscribeFromPushNotifications(): Promise<boolean> {
   if (!('serviceWorker' in navigator)) return false;
 
@@ -79,6 +116,12 @@ export async function unsubscribeFromPushNotifications(): Promise<boolean> {
   }
 }
 
+/**
+ * Show a browser notification manually if permission is granted.
+ * 
+ * @param title - Notification title
+ * @param options - Standard notification options
+ */
 export function showNotification(title: string, options?: NotificationOptions): void {
   if (!('Notification' in window)) return;
 
